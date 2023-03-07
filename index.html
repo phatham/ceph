@@ -11,10 +11,42 @@
         overflow: hidden;
         background-color: #f0f0f0;
       }
+      div#mynav {
+        width: 100%;
+        padding: 10px 0;
+        background-color: #fbeb12;
+        position: fixed;
+        top: 0;
+        left: 0;
+      }
     </style>
   </head>
   <body>
     <div id="container"></div>
+
+    <div id="mynav">
+      <details>
+        <summary>Cal Factor <span id="calFac">1</span> [mm / px]</summary>
+        <p>
+          <button onclick="doCal()">Find Cal Factor</button>
+          <button onclick="setCal()">Set Cal Factor</button>
+        </p>
+      </details>
+      <details>
+        <summary>Independent Nodes</summary>
+        <p>
+          <button onclick="preAdd()">Add Node</button>
+          <button onclick="preDel()">Remove Node</button>
+        </p>
+      </details>
+      <details>
+        <summary>Dependent Planes</summary>
+        <p>
+          <button onclick="twoNtoP()">Two Nodes to Plane</button>
+          <button onclick="preDel()">Remove Node</button>
+        </p>
+      </details>
+    </div>
     <script>
       var width = window.innerWidth;
       var height = window.innerHeight;
@@ -24,31 +56,53 @@
         width: width,
         height: height,
       });
+      var lineRenders = [];
 
       var layer = new Konva.Layer();
-      Konva.Image.fromURL('ceph1.png', function (darthNode) {
-        var layer1 = new Konva.Layer();
-        darthNode.setAttrs({
-          x: 0,
-          y: 0,
-          scaleX: 1,
-          scaleY: 1,
-          cornerRadius: 0,
-        });
-        layer1.add(darthNode);
-        stage.add(layer1);
+      var imgGroup = new Konva.Group({
+        x: 0,
+        y: 0,
+        draggable: false,
       });
+      Konva.Image.fromURL(
+        'https://raw.githubusercontent.com/phatham/ceph/main/ceph1.png',
+        function (darthNode) {
+          darthNode.setAttrs({
+            x: 0,
+            y: 0,
+            scaleX: 1,
+            scaleY: 1,
+            zIndex: -1000,
+            cornerRadius: 0,
+          });
+          imgGroup.add(darthNode);
+          //stage.add(layer1);
+        }
+      );
 
-      var yellowGroup = new Konva.Group({
-        x: 100,
-        y: 100,
-        draggable: true,
-      });
-      var blueGroup = new Konva.Group({
-        x: 300,
-        y: 80,
-        draggable: true,
-      });
+      var input = document.createElement('input');
+      var globalCalLength = 0.001,
+        calFactor = 1;
+      input.type = 'file';
+
+      input.onchange = (e) => {
+        // getting a hold of the file reference
+        var url = URL.createObjectURL(e.target.files[0]);
+
+        Konva.Image.fromURL(url, function (darthNode) {
+          darthNode.setAttrs({
+            x: 0,
+            y: 0,
+            scaleX: 1,
+            scaleY: 1,
+            zIndex: -1000,
+            cornerRadius: 0,
+          });
+          imgGroup.destroyChildren();
+          imgGroup.add(darthNode);
+          //stage.add(layer1);
+        });
+      };
 
       var box = new Konva.Rect({
         x: 10,
@@ -58,44 +112,97 @@
         fill: 'red',
         stroke: 'black',
       });
+      function addToolTip(nodeName, ptDir) {
+        var tooltipGroup = new Konva.Group({
+          x: 100,
+          y: 100,
+          draggable: true,
+          id: 'Point' + nodeName,
+        });
+        var tooltip = new Konva.Label({
+          x: 0,
+          y: 0,
+          opacity: 0.5,
+        });
 
-      var yellowCircle = new Konva.Circle({
-        x: 0,
-        y: 0,
-        radius: 15,
-        fill: 'magenta',
-        stroke: 'black',
-      });
-      var simpleText = new Konva.Text({
-        x: 0,
-        y: 0,
-        width: 20,
-        height: 30,
-        text: 'S',
-        fontSize: 20,
-        fontFamily: 'Calibri',
-        fill: 'green',
-        verticalAlign: 'middle',
-        align: 'center',
-      });
+        tooltip.add(
+          new Konva.Tag({
+            fill: 'black',
+            pointerDirection: ptDir,
+            pointerWidth: 10,
+            pointerHeight: 10,
+            lineJoin: 'round',
+          })
+        );
 
-      var blueCircle = new Konva.Circle({
-        x: 0,
-        y: 0,
-        radius: 50,
-        fill: 'blue',
-        stroke: 'black',
-      });
+        tooltip.add(
+          new Konva.Text({
+            text: nodeName,
+            fontFamily: 'Calibri',
+            fontSize: 18,
+            padding: 5,
+            fill: 'white',
+          })
+        );
 
-      // build node tree
-      yellowGroup.add(yellowCircle);
-      yellowGroup.add(simpleText);
-      blueGroup.add(blueCircle);
-      layer.add(yellowGroup);
-      layer.add(blueGroup);
+        tooltipGroup.add(tooltip);
+        tooltipGroup.on('dragend', function () {
+          var pos = tooltipGroup.getAbsolutePosition(layer);
+          for (var i = 0; i < lineRenders.length; i++) {
+            //addLine(lineRenders[i][0], lineRenders[i][1]);
+          }
+          //alert(nodeName + pos.x + ' ' + pos.y);
+        });
+        layer.add(tooltipGroup);
+      }
+      function addLine(node1, node2) {
+        let pos1 = layer.find('#Point' + node1)[0].getAbsolutePosition(layer);
+        let pos2 = layer.find('#Point' + node2)[0].getAbsolutePosition(layer);
+        var line_pts = [pos1.x, pos1.y, pos2.x, pos2.y];
+        var lineId = 'Line[' + node1 + ',' + node2 + ']';
+        if (layer.find('#' + lineId).length == 0) {
+          var lineGroup = new Konva.Group({
+            x: 0,
+            y: 0,
+            draggable: false,
+            id: lineId,
+          });
+          lineGroup.add(
+            new Konva.Line({
+              points: line_pts,
+              stroke: 'magenta',
+              id: lineId + '_subline',
+            })
+          );
+          lineGroup.add(
+            new Konva.Text({
+              x: pos1.x / 2 + pos2.x / 2,
+              y: pos1.y / 2 + pos2.y / 2 - 30,
+              text: lineId,
+              fontFamily: 'Calibri',
+              fontSize: 18,
+              padding: 5,
+              fill: 'magenta',
+              id: lineId + '_subtext',
+            })
+          );
+          layer.add(lineGroup);
+          lineRenders.push([node1, node2]);
+        } else {
+          layer
+            .find('#' + lineId)[0]
+            .find('#' + lineId + '_subline')[0].points = line_pts;
+          layer.find('#' + lineId)[0].find('#' + lineId + '_subtext')[0].x =
+            pos1.x / 2 + pos2.x / 2;
+          layer.find('#' + lineId)[0].find('#' + lineId + '_subtext')[0].y =
+            pos1.y / 2 + pos2.y / 2 - 30;
+        }
+      }
+      layer.add(imgGroup);
+      //layer.add(tooltip);
       stage.add(layer);
 
-      var scaleBy = 1.01;
+      var scaleBy = 1.03;
       stage.on('wheel', (e) => {
         // stop default scrolling
         e.evt.preventDefault();
@@ -127,6 +234,78 @@
         };
         stage.position(newPos);
       });
+      function addFile() {
+        input.click();
+      }
+      function preAdd() {
+        let nodeNamePrompt = prompt('Node Name', '');
+
+        if (nodeNamePrompt != null && nodeNamePrompt.length > 0) {
+          if (layer.find('#Point' + nodeNamePrompt).length > 0) {
+            alert('Node already exists');
+            return;
+          }
+          //add node name
+          addToolTip(nodeNamePrompt, 'down');
+        }
+      }
+      function doCal() {
+        let calLength = prompt('Calibration Length [mm]', '');
+        if (
+          calLength != null &&
+          calLength.length > 0 &&
+          parseFloat(calLength) > 0
+        ) {
+          globalCalLength = calLength;
+          if (layer.find('#PointCAL1').length > 0) {
+            return;
+          }
+          addToolTip('CAL1', 'left');
+          addToolTip('CAL2', 'left');
+        }
+      }
+      function setCal() {
+        var calPrompt = '';
+        if (layer.find('#PointCAL1').length > 0) {
+          let pos1 = layer.find('#PointCAL1')[0].getAbsolutePosition(layer);
+          let pos2 = layer.find('#PointCAL2')[0].getAbsolutePosition(layer);
+          calPrompt =
+            globalCalLength / Math.hypot(pos1.x - pos2.x, pos1.y - pos2.y);
+        }
+        let calFactorTry = prompt('Calibration Factor [mm / px]', calPrompt);
+        if (
+          calFactorTry != null &&
+          calFactorTry.length > 0 &&
+          parseFloat(calFactorTry) > 0
+        ) {
+          calFactor = parseFloat(calFactorTry);
+          document.getElementById('calFac').innerHTML = calFactor;
+          if (layer.find('#PointCAL1').length > 0) {
+            layer.find('#PointCAL1')[0].destroy();
+          }
+          if (layer.find('#PointCAL2').length > 0) {
+            layer.find('#PointCAL2')[0].destroy();
+          }
+        }
+      }
+      function preDel() {
+        let nodeNamePrompt = prompt('Node Name', '');
+        if (layer.find('#Point' + nodeNamePrompt).length > 0) {
+          layer.find('#Point' + nodeNamePrompt)[0].destroy();
+        }
+      }
+      function twoNtoP() {
+        let node1 = prompt('Node Name [src]', '');
+        let node2 = prompt('Node Name [dst]', '');
+        if (
+          layer.find('#Point' + node1).length > 0 &&
+          layer.find('#Point' + node2).length > 0
+        ) {
+          addLine(node1, node2);
+        } else {
+          alert('Points not found');
+        }
+      }
     </script>
   </body>
 </html>
